@@ -7,7 +7,7 @@ import numpy as np
 from Constant import const
 
 
-def readPicPoint(filepath, iwidth=5344, iheight=4008):
+def readPicPoint(filepath):
     """
     读取单个相片点位数据
     :return: 返回有效数据列表
@@ -109,7 +109,7 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     xmin = (CoorPixel2Photo([0, 0]))[0]
 
     # region 绘制第一张子图 002核线图
-    plt.subplot(121)
+    plt.subplot(221)
     plt.imshow(im2)
     line1x = np.linspace(xmin, xmax, 50)
     line1y = k1 * line1x + b1 * f
@@ -128,7 +128,7 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     # endregion
 
     # region 绘制第二张子图 004 核线图
-    plt.subplot(122)
+    plt.subplot(222)
     plt.imshow(im4)
     line2x = np.linspace(xmin, xmax, 50)
     line2y = k2 * line2x + b2 * f
@@ -144,9 +144,50 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     plt.ylim(iy, 0)
     # endregion
 
-    # # 获取直线上所有的像素值
-    #
-    # pixel1 =
+    # region 沿同名核线绘制RGB分布
+    image2, image4 = im2.load(), im4.load()
+    # TODO 修改x序列取值
+    line3x = np.linspace(xmin, xmax, 2000)
+    line3y1 = k1 * line3x + b1 * f
+    line3y2 = k2 * line3x + b2 * f
+
+    for i in range(len(line3x)):
+        [x, y1] = CoorPhoto2Pixel([line3x[i], line3y1[i]])
+        line3x[i] = x
+        [x, y2] = CoorPhoto2Pixel([line3x[i], line3y2[i]])
+        line3y1[i] = y1
+        line3y2[i] = y2
+
+    line3x = [int(l) for l in line3x]
+    line3y1 = [int(l) for l in line3y1]
+    line3y2 = [int(l) for l in line3y2]
+
+    # TODO 提取像素
+    RGBx = []
+    RGB1y = []
+    RGB2y = []
+    for index in range(len(line3x)):
+        try:
+            x = line3x[index]
+            y1 = line3y1[index]
+            y2 = line3y2[index]
+            RGB1y.append(image2[x, y1])
+            RGB2y.append(image4[x, y2])
+            RGBx.append(x)
+        except BaseException:
+            continue
+    # TODO 绘制曲线
+
+    plt.subplot(223)
+    plt.plot(RGBx, [x[0] for x in RGB1y], color='red')
+    plt.plot(RGBx, [x[1] for x in RGB1y], color='green')
+    plt.plot(RGBx, [x[2] for x in RGB1y], color='blue')
+
+    plt.subplot(224)
+    plt.plot(RGBx, [x[0] for x in RGB2y], color='red')
+    plt.plot(RGBx, [x[1] for x in RGB2y], color='green')
+    plt.plot(RGBx, [x[2] for x in RGB2y], color='blue')
+    # endregion
 
     plt.show()
 
@@ -155,13 +196,13 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
 # [Xs,Ys,Zs,φ,ω,κ]
 f = const.f
 out1 = [4079.39113, -145.16986, -298.34664, 0.21148, 0.06098, -0.08535]
-out2 = [3373.40082, -141.55657, 92.77483, -0.01205, 0.09997, -0.04101]
+out2 = [3373.40082, -141.55657, 92.77483, -0.01205, 0.09997, 0.04101]
 # out2 = [3373.40082, -141.55657, 92.77483, -0.01205, 0.29997, 0.14101]
 l1 = readPicPoint('resource/002.txt')
 l2 = readPicPoint('resource/004.txt')
 # 获取4507点的左图像坐标 并且转换到像空间坐标系
-coor4507 = [one[1:] for one in l1 if one[0] == 4508][0]
-coor4507_2 = [one[1:] for one in l2 if one[0] == 4508][0]
+coor4507 = [one[1:] for one in l1 if one[0] == 4507][0]
+coor4507_2 = [one[1:] for one in l2 if one[0] == 4507][0]
 coor4507.append(-1.0 * f)
 coor4507_2.append(-1.0 * f)
 # 转换为矩阵
@@ -170,6 +211,6 @@ mat4507_2 = np.mat(coor4507_2).reshape(3, 1)
 A1, B1, C1 = getABC(out1, mat4507)
 A2, B2, C2 = getABC(out2, mat4507)
 draw(f, A1 / B1, C1 / B1, A2 / B2, C2 / B2, coor4507, coor4507_2)
-A1, B1, C1 = getABC(out1, mat4507_2)
-A2, B2, C2 = getABC(out2, mat4507_2)
-draw(f, A1 / B1, C1 / B1, A2 / B2, C2 / B2, coor4507, coor4507_2)
+# A1, B1, C1 = getABC(out1, mat4507_2)
+# A2, B2, C2 = getABC(out2, mat4507_2)
+# draw(f, A1 / B1, C1 / B1, A2 / B2, C2 / B2, coor4507, coor4507_2)
