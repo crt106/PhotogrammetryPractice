@@ -1,39 +1,16 @@
 # -*- coding: utf-8 -*-
-import re
 import PIL.Image as plm
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+
+from CommonUtils import Util
 from Constant import const
-
-
-def readPicPoint(filepath):
-    """
-    读取单个相片点位数据
-    :return: 返回有效数据列表
-             [点号,x,y]
-    """
-
-    resultList = []
-    pattern = "\d+\s\d+\.\d+\s\d+\.\d+"
-    f = open(filepath, mode='r')
-    for line in f:
-        if re.match(pattern, line):
-            # -----添加数据的时候转换到像平面坐标系-----
-            num = int(line.split(' ')[0])
-            # x = (float(line.split(' ')[1]) - iwidth / 2) * const.pixel_length - const.x0
-            # y = -1 * (float(line.split(' ')[2]) - iheight / 2) * const.pixel_length - const.y0
-            u = float(line.split(' ')[1])
-            v = float(line.split(' ')[2])
-            [x, y] = CoorPixel2Photo([u, v])
-            # TODO 从图像数据中获取
-            resultList.append([num, x, y])
-    return resultList
 
 
 def getABC(out: list, xyz):
     """
-    求得核线中间变量ABC
+    求得核线中间变量ABC(基于共面条件方法)
     :param out:外方位元素
     :param xyz: 指定点位的像空间坐标
     :return:
@@ -61,33 +38,92 @@ def getABC(out: list, xyz):
     return A, B, C
 
 
-def CoorPixel2Photo(uv, iwidth=const.iwidth, iheight=const.iwidth):
+def getL(matchList: list):
     """
-    像素坐标转换为像平面坐标系
-    :param uv:
-    :param iwidth:
-    :param iheight:
+    获得参数L1-L8(利用相对定向直接解进行核线排列 《数字摄影测量学基础 P96》)
+    :param matchList:匹配的同名像点
     :return:
     """
-    x = (uv[0] - iwidth / 2) * const.pixel_length - const.x0
-    y = (uv[1] - iheight / 2) * const.pixel_length - const.y0
-    return [x, y]
+    x1 = [one[1] for one in matchList]
+    y1 = [one[2] for one in matchList]
+    x2 = [one[3] for one in matchList]
+    y2 = [one[4] for one in matchList]
+
+    B: np.matrix = []
+    Q: np.matrix = []
+    # 构建A和Q
+    for i in range(len(x1)):
+        B.append(
+            [1, x1[i], y1[i], x2[i], x1[i] * x2[i], x1[i] * y2[i], y1[i] * x2[i], y1[i] * y2[i]])
+        Q.append([y1[i] - y2[i]])
+    B = np.mat(B)
+    Q = np.mat(Q)
+    # 构建初值
+    L = np.zeros((8, 1))
+    while True:
+        l = Q - B * L
+        v = (B.T * B).I * B.T * l
+        L = L + v
+        if Util.valueJudge(v, 1E-15):
+            break
+    return L
 
 
-def CoorPhoto2Pixel(xy, iwidth=const.iwidth, iheight=const.iwidth):
+def drawSearchPoint(im1: plm.Image, im2: plm.Image, xlist: list, ylist1: list, ylist2: list):
     """
-    像平面坐标系坐标转换为像素坐标
-    :param xy:
+    在图像上绘制沿着同名核线搜索的同名像点情况
+    :param im1: 左图像
+    :param im2: 右图像
+    :param xlist: x值列表(像平面坐标系)
+    :param ylist1: 左图像y值列表(像平面坐标系)
+    :param ylist2: 右图像y值列表(像平面坐标系)
     :return:
     """
-    u = (xy[0] + const.x0) / const.pixel_length + iwidth / 2
-    v = (xy[1] + const.y0) / const.pixel_length + iheight / 2
-    return [u, v]
+    # region 沿同名核线绘制RGB分布
+    image2, image4 = im1.load(), im2.load()
+
+    # 转换到像素坐标系并且取整，方便提取像素
+    for i in range(len(xlist)):
+        [x, y1] = Util.CoorPhoto2Pixel([xlist[i], ylist1[i]])
+        xlist[i] = x
+        [x, y2] = Util.CoorPhoto2Pixel([xlist[i], ylist2[i]])
+        ylist1[i] = y1
+        ylist2[i] = y2
+
+    xlist = [int(l) for l in xlist]
+    ylist1 = [int(l) for l in ylist1]
+    ylist2 = [int(l) for l in ylist2]
+
+    # 获取RGB属性
+    RGBx = []
+    RGB1y = []
+    RGB2y = []
+    for index in range(len(xlist)):
+        try:
+            x = xlist[index]
+            y1 = ylist1[index]
+            y2 = ylist2[index]
+            RGB1y.append(image2[x, y1])
+            RGB2y.append(image4[x, y2])
+            RGBx.append(x)
+        except BaseException:
+            continue
+    # 绘制曲线
+    plt.subplot(223)
+    plt.plot(RGBx, [x[0] for x in RGB1y], color='red')
+    plt.plot(RGBx, [x[1] for x in RGB1y], color='green')
+    plt.plot(RGBx, [x[2] for x in RGB1y], color='blue')
+
+    plt.subplot(224)
+    plt.plot(RGBx, [x[0] for x in RGB2y], color='red')
+    plt.plot(RGBx, [x[1] for x in RGB2y], color='green')
+    plt.plot(RGBx, [x[2] for x in RGB2y], color='blue')
+    # endregion
 
 
 def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     """
-    在图像上绘制同名核线 并且绘制沿着该同名核线搜索的同名像点
+    在图像上绘制同名核线(基于共面条件)
     :param f: 焦距
     :param k1: 左图像核线参数A/B
     :param b1: 左图像核线参数C/B
@@ -98,15 +134,14 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     im2: plm.Image = plm.open("resource/002.jpg")
     im4: plm.Image = plm.open("resource/004.jpg")
     ix, iy = im2.size[0], im2.size[1]
-    # imgdata2, imgdata4 = np.asarray(im2), np.asarray(im4)
     plt.rcParams['savefig.dpi'] = 300
     plt.rcParams['figure.dpi'] = 300
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
     plt.figure("同名核线")
 
-    xmax = (CoorPixel2Photo([const.iwidth, 0]))[0]
-    xmin = (CoorPixel2Photo([0, 0]))[0]
+    xmax = (Util.CoorPixel2Photo([const.iwidth, 0]))[0]
+    xmin = (Util.CoorPixel2Photo([0, 0]))[0]
 
     # region 绘制第一张子图 002核线图
     plt.subplot(221)
@@ -115,11 +150,11 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     line1y = k1 * line1x + b1 * f
     # 坐标转换到像素坐标
     for i in range(len(line1x)):
-        [x, y] = CoorPhoto2Pixel([line1x[i], line1y[i]])
+        [x, y] = Util.CoorPhoto2Pixel([line1x[i], line1y[i]])
         line1x[i] = x
         line1y[i] = y
 
-    point1 = CoorPhoto2Pixel(coor4507_1[0:2])
+    point1 = Util.CoorPhoto2Pixel(coor4507_1[0:2])
     plt.plot(line1x, line1y)
     plt.scatter(point1[0], point1[1], s=2, color='red')
     # 限制坐标范围
@@ -133,73 +168,123 @@ def draw(f, k1, b1, k2, b2, coor4507_1, coor4507_2):
     line2x = np.linspace(xmin, xmax, 50)
     line2y = k2 * line2x + b2 * f
     for i in range(len(line2x)):
-        [x, y] = CoorPhoto2Pixel([line2x[i], line2y[i]])
+        [x, y] = Util.CoorPhoto2Pixel([line2x[i], line2y[i]])
         line2x[i] = x
         line2y[i] = y
     plt.plot(line2x, line2y)
-    point2 = CoorPhoto2Pixel(coor4507_2[0:2])
+    point2 = Util.CoorPhoto2Pixel(coor4507_2[0:2])
     plt.scatter(point2[0], point2[1], s=2, color='red')
     # 限制坐标范围
     plt.xlim(0, ix)
     plt.ylim(iy, 0)
     # endregion
 
-    # region 沿同名核线绘制RGB分布
-    image2, image4 = im2.load(), im4.load()
-    # TODO 修改x序列取值
+    # 绘制同名核线搜索结果
     line3x = np.linspace(xmin, xmax, 2000)
     line3y1 = k1 * line3x + b1 * f
     line3y2 = k2 * line3x + b2 * f
-
-    for i in range(len(line3x)):
-        [x, y1] = CoorPhoto2Pixel([line3x[i], line3y1[i]])
-        line3x[i] = x
-        [x, y2] = CoorPhoto2Pixel([line3x[i], line3y2[i]])
-        line3y1[i] = y1
-        line3y2[i] = y2
-
-    line3x = [int(l) for l in line3x]
-    line3y1 = [int(l) for l in line3y1]
-    line3y2 = [int(l) for l in line3y2]
-
-    # TODO 提取像素
-    RGBx = []
-    RGB1y = []
-    RGB2y = []
-    for index in range(len(line3x)):
-        try:
-            x = line3x[index]
-            y1 = line3y1[index]
-            y2 = line3y2[index]
-            RGB1y.append(image2[x, y1])
-            RGB2y.append(image4[x, y2])
-            RGBx.append(x)
-        except BaseException:
-            continue
-    # TODO 绘制曲线
-
-    plt.subplot(223)
-    plt.plot(RGBx, [x[0] for x in RGB1y], color='red')
-    plt.plot(RGBx, [x[1] for x in RGB1y], color='green')
-    plt.plot(RGBx, [x[2] for x in RGB1y], color='blue')
-
-    plt.subplot(224)
-    plt.plot(RGBx, [x[0] for x in RGB2y], color='red')
-    plt.plot(RGBx, [x[1] for x in RGB2y], color='green')
-    plt.plot(RGBx, [x[2] for x in RGB2y], color='blue')
-    # endregion
+    drawSearchPoint(im2, im4, line3x, line3y1, line3y2)
 
     plt.show()
 
 
+def draw(matchList: list, coor4507_1, coor4507_2):
+    """
+    绘制同名核线(基于相对定向直接解进行核线排列)
+    :return:
+    """
+    L = getL(matchList)
+    L1 = L[0, 0]
+    L2 = L[1, 0]
+    L3 = L[2, 0]
+    L4 = L[3, 0]
+    L5 = L[4, 0]
+    L6 = L[5, 0]
+    L7 = L[6, 0]
+    L8 = L[7, 0]
+
+    x1 = coor4507_1[0]
+    y1 = coor4507_1[1]
+
+    xmax = (Util.CoorPixel2Photo([const.iwidth, 0]))[0]
+    xmin = (Util.CoorPixel2Photo([0, 0]))[0]
+
+    def tryCoor1(x1, y1, tryx):
+        """
+        利用L系数和任意取tryx求解tryy(左求右)
+        :param x1: 已知像点的x坐标
+        :param y1: 已知像点的y坐标
+        :param tryx: 任意选取的点的x坐标
+        :return:任意选取的点求得的y坐标
+        """
+        return ((1 - L3) * y1 - L1 - L2 * x1 - L4 * tryx - L5 * x1 * tryx - L7 * y1 * tryx) / (
+                1 + L6 * x1 + L8 * y1)
+
+    def tryCoor2(x1, y1, tryx):
+        """
+        利用L系数和任意取tryx求解tryy(右求左)
+        :param x1: 已知像点的x坐标
+        :param y1: 已知像点的y坐标
+        :param tryx: 任意选取的点的x坐标
+        :return:任意选取的点求得的y坐标
+        """
+        return (y1 + L1 + L2 * tryx + L4 * x1 + L5 * x1 * tryx + L6 * tryx * y1) / (
+                    1 - L3 - L7 * x1 - L8 * y1)
+
+    # 点位try1，try2是右方影像的随机取点 try3,try4是反求的左侧影像的点
+    tryy1 = tryCoor1(x1, y1, xmin)
+    tryy2 = tryCoor1(x1, y1, xmax)
+    tryy3 = tryCoor2(coor4507_2[0], coor4507_2[1], xmin)
+    tryy4 = tryCoor2(coor4507_2[0], coor4507_2[1], xmax)
+
+    [tryx1, tryy1] = Util.CoorPhoto2Pixel([xmin, tryy1])
+    [tryx2, tryy2] = Util.CoorPhoto2Pixel([xmax, tryy2])
+    [tryx3, tryy3] = Util.CoorPhoto2Pixel([xmin, tryy3])
+    [tryx4, tryy4] = Util.CoorPhoto2Pixel([xmax, tryy4])
+
+    im2: plm.Image = plm.open("resource/002.jpg")
+    im4: plm.Image = plm.open("resource/004.jpg")
+    ix, iy = im2.size[0], im2.size[1]
+    plt.rcParams['savefig.dpi'] = 300
+    plt.rcParams['figure.dpi'] = 300
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.figure("同名核线")
+
+    # region 绘制第一张子图 002核线图
+    plt.subplot(221)
+    plt.imshow(im2)
+    point1 = Util.CoorPhoto2Pixel(coor4507_1[0:2])
+    plt.scatter(point1[0], point1[1], s=2, color='red')
+    plt.plot( [tryx3, tryx4], [tryy3, tryy4])
+    # 限制坐标范围
+    plt.xlim(0, ix)
+    plt.ylim(iy, 0)
+    # endregion
+
+    # region 绘制第二张子图 004 核线图
+    plt.subplot(222)
+    plt.imshow(im4)
+    point2 = Util.CoorPhoto2Pixel(coor4507_2[0:2])
+    plt.scatter(point2[0], point2[1], s=2, color='red')
+    plt.plot([tryx1, tryx2], [tryy1, tryy2])
+    # 限制坐标范围
+    plt.xlim(0, ix)
+    plt.ylim(iy, 0)
+
+    # endregion
+    plt.show()
+
+
+# 主方法
 # 手动输入外方位元素,毕竟源txt不规整，用正则又多余
 # [Xs,Ys,Zs,φ,ω,κ]
 f = const.f
 out1 = [4079.39113, -145.16986, -298.34664, 0.21148, 0.06098, -0.08535]
 out2 = [3373.40082, -141.55657, 92.77483, -0.01205, 0.09997, 0.04101]
 # out2 = [3373.40082, -141.55657, 92.77483, -0.01205, 0.29997, 0.14101]
-l1 = readPicPoint('resource/002.txt')
-l2 = readPicPoint('resource/004.txt')
+l1 = Util.readPicPoint('resource/002.txt')
+l2 = Util.readPicPoint('resource/004.txt')
 # 获取4507点的左图像坐标 并且转换到像空间坐标系
 coor4507 = [one[1:] for one in l1 if one[0] == 4507][0]
 coor4507_2 = [one[1:] for one in l2 if one[0] == 4507][0]
@@ -210,7 +295,5 @@ mat4507 = np.mat(coor4507).reshape(3, 1)
 mat4507_2 = np.mat(coor4507_2).reshape(3, 1)
 A1, B1, C1 = getABC(out1, mat4507)
 A2, B2, C2 = getABC(out2, mat4507)
-draw(f, A1 / B1, C1 / B1, A2 / B2, C2 / B2, coor4507, coor4507_2)
-# A1, B1, C1 = getABC(out1, mat4507_2)
-# A2, B2, C2 = getABC(out2, mat4507_2)
 # draw(f, A1 / B1, C1 / B1, A2 / B2, C2 / B2, coor4507, coor4507_2)
+draw(Util.matchPicPoint(l1, l2), coor4507, coor4507_2)
