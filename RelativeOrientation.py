@@ -1,18 +1,30 @@
+import math
 import numpy as np
-import re
 
 from CommonUtils import Util
+from Constant import const
 
 
 def getAssistCoordinate(phi, omega, kappa, x, y, f):
     """
-    构建微小旋转矩阵
+    构建旋转矩阵
     获得左右侧图像的像点像空间辅助坐标[X1,Y1,Z1]或[X2,Y2,Z2]T
     :return:
     """
-    R = np.mat([[1, -1 * kappa, -1 * phi],
-                [kappa, 1, -1 * omega],
-                [phi, omega, 1]])
+    # R = np.mat([[1, -1 * kappa, -1 * phi],
+    #             [kappa, 1, -1 * omega],
+    #             [phi, omega, 1]])
+
+    a1 = math.cos(phi) * math.cos(kappa) - math.sin(phi) * math.sin(omega) * math.sin(kappa)
+    a2 = -math.cos(phi) * math.sin(kappa) - math.sin(phi) * math.sin(omega) * math.cos(kappa)
+    a3 = -math.sin(phi) * math.cos(omega)
+    b1 = math.cos(omega) * math.sin(kappa)
+    b2 = math.cos(omega) * math.cos(kappa)
+    b3 = -math.sin(omega)
+    c1 = math.sin(phi) * math.cos(kappa) + math.cos(phi) * math.sin(omega) * math.sin(kappa)
+    c2 = -math.sin(phi) * math.sin(kappa) + math.cos(phi) * math.sin(omega) * math.cos(kappa)
+    c3 = math.cos(phi) * math.cos(omega)
+    R = np.mat([[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]])
     right = np.mat([[x],
                     [y],
                     [-1.0 * f]])
@@ -53,7 +65,6 @@ def calculteN(f, Bx, matchPoint, elementMat):
     return N1, N2, q
 
 
-
 l1 = Util.readPicPoint('resource/002.txt')
 l2 = Util.readPicPoint('resource/004.txt')
 matchList = Util.matchPicPoint(l1, l2)
@@ -77,7 +88,7 @@ if len(matchList) > 5:
     """
     elementMat = np.zeros((5, 1))
     # 焦距f
-    f = 35
+    f = const.f
 
     loopcount = 0
     # 主循环过程
