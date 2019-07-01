@@ -97,6 +97,7 @@ if len(matchList) > 5:
         Q = np.zeros((1, 1))
         # 随意估算Bx
         Bx = matchList[0][1] - matchList[0][3]
+        print("估算Bx:{:^.3f}".format(Bx))
         for mpoint in matchList:
             x2 = mpoint[3]
             y2 = mpoint[4]

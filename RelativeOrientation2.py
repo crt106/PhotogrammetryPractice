@@ -170,6 +170,7 @@ if len(matchList) > 5:
         Q, R = np.mat(Q), np.mat(R)
         L = np.mat(L).T
         NBB = R.T * R
+        # 求广义逆
         NBB_I = np.linalg.pinv(NBB)
         Wu1 = B.T * L
         NCC = C * NBB_I * C.T

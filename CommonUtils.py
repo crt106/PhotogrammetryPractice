@@ -7,9 +7,11 @@ from Constant import const
 class Util:
 
     @staticmethod
-    def readPicPoint(filepath):
+    def readPicPoint(filepath, convert2mm=True):
         """
-        读取单个相片点位数据
+        读取单个相片点位数据,并且更具情况使用单位像素宽度转换单位为毫米
+        :param filepath:文件路径
+        :param convert2mm:是否将单位转换为mm
         :return: 返回有效数据列表
                  [点号,x,y]
         """
@@ -25,8 +27,10 @@ class Util:
                 # y = -1 * (float(line.split(' ')[2]) - iheight / 2) * const.pixel_length - const.y0
                 u = float(line.split(' ')[1])
                 v = float(line.split(' ')[2])
-                [x, y] = Util.CoorPixel2Photo([u, v])
-                # TODO 从图像数据中获取
+                if convert2mm:
+                    [x, y] = Util.CoorPixel2Photo([u, v])
+                else:
+                    [x, y] = [u, v]
                 resultList.append([num, x, y])
         return resultList
 
@@ -50,10 +54,10 @@ class Util:
         return resultList
 
     @staticmethod
-    def CoorPixel2Photo(uv, iwidth=const.iwidth, iheight=const.iwidth):
+    def CoorPixel2Photo(uv, iwidth=const.iwidth, iheight=const.iheight):
         """
         像素坐标转换为像平面坐标系
-        :param uv:
+        :param uv:单位mm
         :param iwidth:
         :param iheight:
         :return:
@@ -63,10 +67,10 @@ class Util:
         return [x, y]
 
     @staticmethod
-    def CoorPhoto2Pixel(xy, iwidth=const.iwidth, iheight=const.iwidth):
+    def CoorPhoto2Pixel(xy, iwidth=const.iwidth, iheight=const.iheight):
         """
         像平面坐标系坐标转换为像素坐标
-        :param xy:
+        :param xy:单位mm
         :return:
         """
         u = (xy[0] + const.x0) / const.pixel_length + iwidth / 2
@@ -87,5 +91,3 @@ class Util:
             if ax > value:
                 return False
         return True
-
-
